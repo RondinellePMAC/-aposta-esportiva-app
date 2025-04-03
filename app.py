@@ -52,13 +52,17 @@ if buscar and time_casa_nome and time_fora_nome:
         stats_fora = buscar_estatisticas_time(id_fora)
 
         if stats_casa and stats_fora:
-            gols_casa = stats_casa['goals']['for']['average']['total'] or 1.0
-            sofre_casa = stats_casa['goals']['against']['average']['total'] or 1.0
-            gols_fora = stats_fora['goals']['for']['average']['total'] or 1.0
-            sofre_fora = stats_fora['goals']['against']['average']['total'] or 1.0
-            vitorias_casa = stats_casa['fixtures']['wins']['total'] / stats_casa['fixtures']['played']['total'] * 100
-            empates = stats_casa['fixtures']['draws']['total'] / stats_casa['fixtures']['played']['total'] * 100
-            vitorias_fora = stats_fora['fixtures']['wins']['total'] / stats_fora['fixtures']['played']['total'] * 100
+            gols_casa = float(stats_casa['goals']['for']['average']['total'] or 1.0)
+            sofre_casa = float(stats_casa['goals']['against']['average']['total'] or 1.0)
+            gols_fora = float(stats_fora['goals']['for']['average']['total'] or 1.0)
+            sofre_fora = float(stats_fora['goals']['against']['average']['total'] or 1.0)
+
+            jogos_casa = stats_casa['fixtures']['played']['total'] or 1
+            jogos_fora = stats_fora['fixtures']['played']['total'] or 1
+
+            vitorias_casa = stats_casa['fixtures']['wins']['total'] / jogos_casa * 100
+            empates = stats_casa['fixtures']['draws']['total'] / jogos_casa * 100
+            vitorias_fora = stats_fora['fixtures']['wins']['total'] / jogos_fora * 100
             odds = 1.90
 
             media_gols = gols_casa + gols_fora
