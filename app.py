@@ -32,7 +32,7 @@ def extrair_media(valor):
     except (TypeError, ValueError):
         return 1.0
 
-def analisar_jogo(jogo):
+def analisar_jogo(jogo, limite_confianca):
     time_casa = jogo['teams']['home']
     time_fora = jogo['teams']['away']
     league_id = jogo['league']['id']
@@ -69,7 +69,7 @@ def analisar_jogo(jogo):
     if empates < 20:
         confianca += 20
 
-    if confianca >= 80:
+    if confianca >= limite_confianca:
         return {
             "Jogo": f"{time_casa['name']} vs {time_fora['name']}",
             "Média de Gols": round(media_gols, 2),
@@ -83,22 +83,24 @@ def analisar_jogo(jogo):
     return None
 
 st.set_page_config(page_title="Palpites Diários com Alta Precisão", layout="wide")
-st.title("🔎 Palpites de Hoje com Alta Confiança (80%+)")
+st.title("🔎 Palpites de Hoje com Alta Confiança")
+
+limite = st.slider("Selecione o nível mínimo de confiança (%) para os jogos analisados:", min_value=50, max_value=100, value=80, step=5)
 
 jogos_hoje = listar_jogos_hoje()
 resultados = []
 
 with st.spinner("Analisando partidas de hoje..."):
     for jogo in jogos_hoje:
-        resultado = analisar_jogo(jogo)
+        resultado = analisar_jogo(jogo, limite)
         if resultado:
             resultados.append(resultado)
 
 if resultados:
     df_resultados = pd.DataFrame(resultados)
     st.dataframe(df_resultados, use_container_width=True)
-    st.success(f"{len(resultados)} jogos com confiança >= 80% encontrados.")
+    st.success(f"{len(resultados)} jogos com confiança >= {limite}% encontrados.")
 else:
-    st.warning("Nenhum jogo com confiança >= 80% encontrado hoje.")
+    st.warning(f"Nenhum jogo com confiança >= {limite}% encontrado hoje.")
 
 st.caption("Desenvolvido com dados da API-Football. Use as informações com responsabilidade.")
