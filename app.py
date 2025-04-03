@@ -72,9 +72,51 @@ def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
 
     return min(round(score, 1), 100), palpite
 
-# Exemplo de uso correto dentro de um loop:
-# for jogo in jogos_hoje:
-#     stats_casa = buscar_estatisticas_time(jogo['teams']['home']['id'], jogo['league']['id'], jogo['league']['season'])
-#     stats_fora = buscar_estatisticas_time(jogo['teams']['away']['id'], jogo['league']['id'], jogo['league']['season'])
-#     score, palpite = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
-#     st.write(f"Score: {score}, Palpite: {palpite}")
+def listar_jogos_hoje_por_liga(league_id):
+    hoje = date.today().strftime("%Y-%m-%d")
+    response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS, params={"date": hoje, "league": league_id})
+    if response.status_code == 200:
+        return response.json()['response']
+    return []
+
+st.set_page_config(page_title="Melhor do Mundo - Apostas", layout="wide")
+st.title("🔍 Análise de Partidas - Estilo Melhor do Mundo")
+
+continente = st.selectbox("🌎 Selecione o continente", list(continentes.keys()))
+liga_nome = st.selectbox("🏆 Escolha a liga", continentes[continente])
+liga_id = ligas_disponiveis[liga_nome]
+
+jogos_hoje = listar_jogos_hoje_por_liga(liga_id)
+
+if not jogos_hoje:
+    st.warning("Nenhum jogo encontrado para hoje nesta liga.")
+else:
+    for jogo in jogos_hoje:
+        time_casa = jogo['teams']['home']['name']
+        time_fora = jogo['teams']['away']['name']
+        st.markdown(f"### ⚽ {time_casa} vs {time_fora}")
+
+        stats_casa = buscar_estatisticas_time(jogo['teams']['home']['id'], jogo['league']['id'], jogo['league']['season'])
+        stats_fora = buscar_estatisticas_time(jogo['teams']['away']['id'], jogo['league']['id'], jogo['league']['season'])
+
+        score, palpite = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
+
+        st.info(f"🏅 Score: {score}/100")
+        st.success(f"🎯 Palpite sugerido: {palpite}")
+
+        chart_data = pd.DataFrame({
+            "Equipe": ["Mandante", "Visitante"],
+            "Confiança": [score if palpite == "Vitória Mandante" else score / 2,
+                          score if palpite == "Vitória Visitante" else score / 2]
+        })
+
+        chart = alt.Chart(chart_data).mark_bar().encode(
+            x="Equipe",
+            y="Confiança",
+            color="Equipe"
+        ).properties(height=200)
+
+        st.altair_chart(chart, use_container_width=True)
+        st.divider()
+
+st.caption("Desenvolvido com inteligência para análise preditiva de apostas esportivas")
