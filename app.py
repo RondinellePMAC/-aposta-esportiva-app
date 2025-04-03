@@ -3,42 +3,20 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 import requests
+from datetime import date
 
 API_KEY = "a5b1c48c433202056145dd194ad64571"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
-def listar_todos_times():
-    times = []
-    page = 1
-    while True:
-        response = requests.get(
-            f"{BASE_URL}/teams",
-            headers=HEADERS,
-            params={"page": page}
-        )
-        if response.status_code != 200:
-            break
-        data = response.json()
-        times += [team['team']['name'] for team in data['response']]
-        if page >= data['paging']['total']:
-            break
-        page += 1
-    return sorted(set(times))
-
-def buscar_time_por_nome(nome_time):
-    response = requests.get(
-        f"{BASE_URL}/teams",
-        headers=HEADERS,
-        params={"search": nome_time}
-    )
+def listar_jogos_hoje():
+    hoje = date.today().strftime("%Y-%m-%d")
+    response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS, params={"date": hoje})
     if response.status_code == 200:
-        data = response.json()
-        if data['results'] > 0:
-            return data['response'][0]['team']['id']
-    return None
+        return response.json()['response']
+    return []
 
-def buscar_estatisticas_time(team_id, league_id=71, season=2023):
+def buscar_estatisticas_time(team_id, league_id, season):
     response = requests.get(
         f"{BASE_URL}/teams/statistics",
         headers=HEADERS,
@@ -54,105 +32,73 @@ def extrair_media(valor):
     except (TypeError, ValueError):
         return 1.0
 
-st.set_page_config(page_title="Análise de Partidas", layout="wide")
-st.title("⚽ Análise Automática de Jogo com API")
+def analisar_jogo(jogo):
+    time_casa = jogo['teams']['home']
+    time_fora = jogo['teams']['away']
+    league_id = jogo['league']['id']
+    season = jogo['league']['season']
+    id_casa = time_casa['id']
+    id_fora = time_fora['id']
 
-st.markdown("Aguarde o carregamento de todos os times... (pode levar alguns segundos)")
-lista_times = listar_todos_times()
+    stats_casa = buscar_estatisticas_time(id_casa, league_id, season)
+    stats_fora = buscar_estatisticas_time(id_fora, league_id, season)
 
-with st.form("form_api"):
-    st.markdown("### 🔍 Selecione os Times para Análise")
-    time_casa_nome = st.selectbox("🏠 Time Mandante", options=lista_times)
-    time_fora_nome = st.selectbox("🚌 Time Visitante", options=lista_times)
-    buscar = st.form_submit_button("Buscar Estatísticas e Analisar")
+    if not stats_casa or not stats_fora:
+        return None
 
-if buscar and time_casa_nome and time_fora_nome:
-    id_casa = buscar_time_por_nome(time_casa_nome)
-    id_fora = buscar_time_por_nome(time_fora_nome)
+    gols_casa = extrair_media(stats_casa['goals']['for']['average']['total'])
+    gols_fora = extrair_media(stats_fora['goals']['for']['average']['total'])
+    media_gols = gols_casa + gols_fora
+    ambas_marcam = gols_casa > 0.9 and gols_fora > 0.9
+    mais_25 = media_gols > 2.5
 
-    if id_casa and id_fora:
-        stats_casa = buscar_estatisticas_time(id_casa)
-        stats_fora = buscar_estatisticas_time(id_fora)
+    jogos_casa = stats_casa['fixtures']['played']['total'] or 1
+    jogos_fora = stats_fora['fixtures']['played']['total'] or 1
 
-        if stats_casa and stats_fora:
-            gols_casa = extrair_media(stats_casa['goals']['for']['average']['total'])
-            sofre_casa = extrair_media(stats_casa['goals']['against']['average']['total'])
-            gols_fora = extrair_media(stats_fora['goals']['for']['average']['total'])
-            sofre_fora = extrair_media(stats_fora['goals']['against']['average']['total'])
+    vitorias_casa = stats_casa['fixtures']['wins']['total'] / jogos_casa * 100
+    empates = stats_casa['fixtures']['draws']['total'] / jogos_casa * 100
+    vitorias_fora = stats_fora['fixtures']['wins']['total'] / jogos_fora * 100
 
-            jogos_casa = stats_casa['fixtures']['played']['total'] or 1
-            jogos_fora = stats_fora['fixtures']['played']['total'] or 1
+    confianca = 0
+    if media_gols > 2.5:
+        confianca += 30
+    if ambas_marcam:
+        confianca += 20
+    if max(vitorias_casa, vitorias_fora) > 60:
+        confianca += 30
+    if empates < 20:
+        confianca += 20
 
-            vitorias_casa = stats_casa['fixtures']['wins']['total'] / jogos_casa * 100
-            empates = stats_casa['fixtures']['draws']['total'] / jogos_casa * 100
-            vitorias_fora = stats_fora['fixtures']['wins']['total'] / jogos_fora * 100
-            odds = 1.90
+    if confianca >= 80:
+        return {
+            "Jogo": f"{time_casa['name']} vs {time_fora['name']}",
+            "Média de Gols": round(media_gols, 2),
+            "Ambas Marcam": "Sim" if ambas_marcam else "Não",
+            "+2.5 Gols": "Sim" if mais_25 else "Não",
+            "Vitória Mandante (%)": round(vitorias_casa, 1),
+            "Empate (%)": round(empates, 1),
+            "Vitória Visitante (%)": round(vitorias_fora, 1),
+            "Confiabilidade": f"{confianca}%"
+        }
+    return None
 
-            media_gols = gols_casa + gols_fora
-            ambas_marcam = gols_casa > 0.9 and gols_fora > 0.9
-            mais_25 = media_gols > 2.5
+st.set_page_config(page_title="Palpites Diários com Alta Precisão", layout="wide")
+st.title("🔎 Palpites de Hoje com Alta Confiança (80%+)")
 
-            prob_casa = round(vitorias_casa, 1)
-            prob_empate = round(empates, 1)
-            prob_fora = round(vitorias_fora, 1)
+jogos_hoje = listar_jogos_hoje()
+resultados = []
 
-            if prob_fora > 50:
-                melhor = "Vitória Visitante"
-            elif prob_casa > 50:
-                melhor = "Vitória Mandante"
-            elif mais_25:
-                melhor = "+2.5 Gols"
-            elif ambas_marcam:
-                melhor = "Ambas Marcam"
-            else:
-                melhor = "Dupla Chance (Empate ou Visitante)"
+with st.spinner("Analisando partidas de hoje..."):
+    for jogo in jogos_hoje:
+        resultado = analisar_jogo(jogo)
+        if resultado:
+            resultados.append(resultado)
 
-            df = pd.DataFrame([{
-                "Jogo": f"{time_casa_nome} vs {time_fora_nome}",
-                "Média de Gols": round(media_gols, 2),
-                "+2.5 Gols": "Sim" if mais_25 else "Não",
-                "Ambas Marcam": "Sim" if ambas_marcam else "Não",
-                "Vitória Mandante (%)": prob_casa,
-                "Empate (%)": prob_empate,
-                "Vitória Visitante (%)": prob_fora,
-                "Melhor Aposta": melhor,
-                "Odd Simulada": odds
-            }])
+if resultados:
+    df_resultados = pd.DataFrame(resultados)
+    st.dataframe(df_resultados, use_container_width=True)
+    st.success(f"{len(resultados)} jogos com confiança >= 80% encontrados.")
+else:
+    st.warning("Nenhum jogo com confiança >= 80% encontrado hoje.")
 
-            st.markdown("### 📊 Resultado da Análise")
-            st.dataframe(df, use_container_width=True)
-
-            st.markdown("### 📁 Exportar Palpite")
-            def to_excel(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Palpite')
-                return output.getvalue()
-
-            excel_data = to_excel(df)
-            st.download_button(
-                label="📥 Baixar Palpite (Excel)",
-                data=excel_data,
-                file_name="palpite_jogo.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-            st.success(f"🎯 Melhor aposta sugerida: {melhor}")
-
-            st.markdown("---")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("🔵 Gols Marcados (Mandante)", f"{gols_casa:.2f}")
-                st.metric("🔴 Gols Sofridos (Mandante)", f"{sofre_casa:.2f}")
-                st.metric("✅ Vitória Mandante (%)", f"{prob_casa:.1f}%")
-            with col2:
-                st.metric("🔵 Gols Marcados (Visitante)", f"{gols_fora:.2f}")
-                st.metric("🔴 Gols Sofridos (Visitante)", f"{sofre_fora:.2f}")
-                st.metric("✅ Vitória Visitante (%)", f"{prob_fora:.1f}%")
-        else:
-            st.error("Erro ao obter estatísticas dos times.")
-    else:
-        st.error("Time(s) não encontrados. Verifique os nomes e tente novamente.")
-
-st.markdown("---")
-st.caption("⚠️ Esta ferramenta é apenas uma estimativa baseada nos dados fornecidos pela API-Football. Aposte com responsabilidade.")
+st.caption("Desenvolvido com dados da API-Football. Use as informações com responsabilidade.")
