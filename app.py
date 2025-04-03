@@ -32,7 +32,7 @@ def extrair_media(valor):
     except (TypeError, ValueError):
         return 1.0
 
-def analisar_jogo(jogo, limite_confianca):
+def analisar_jogo_completo(jogo):
     time_casa = jogo['teams']['home']
     time_fora = jogo['teams']['away']
     league_id = jogo['league']['id']
@@ -69,38 +69,34 @@ def analisar_jogo(jogo, limite_confianca):
     if empates < 20:
         confianca += 20
 
-    if confianca >= limite_confianca:
-        return {
-            "Jogo": f"{time_casa['name']} vs {time_fora['name']}",
-            "Média de Gols": round(media_gols, 2),
-            "Ambas Marcam": "Sim" if ambas_marcam else "Não",
-            "+2.5 Gols": "Sim" if mais_25 else "Não",
-            "Vitória Mandante (%)": round(vitorias_casa, 1),
-            "Empate (%)": round(empates, 1),
-            "Vitória Visitante (%)": round(vitorias_fora, 1),
-            "Confiabilidade": f"{confianca}%"
-        }
-    return None
+    return {
+        "Jogo": f"{time_casa['name']} vs {time_fora['name']}",
+        "Média de Gols": round(media_gols, 2),
+        "Ambas Marcam": "Sim" if ambas_marcam else "Não",
+        "+2.5 Gols": "Sim" if mais_25 else "Não",
+        "Vitória Mandante (%)": round(vitorias_casa, 1),
+        "Empate (%)": round(empates, 1),
+        "Vitória Visitante (%)": round(vitorias_fora, 1),
+        "Confiabilidade": f"{confianca}%"
+    }
 
-st.set_page_config(page_title="Palpites Diários com Alta Precisão", layout="wide")
-st.title("🔎 Palpites de Hoje com Alta Confiança")
-
-limite = st.slider("Selecione o nível mínimo de confiança (%) para os jogos analisados:", min_value=50, max_value=100, value=80, step=5)
+st.set_page_config(page_title="Probabilidades Diárias de Jogos", layout="wide")
+st.title("📊 Probabilidades de Todos os Jogos de Hoje")
 
 jogos_hoje = listar_jogos_hoje()
 resultados = []
 
-with st.spinner("Analisando partidas de hoje..."):
+with st.spinner("Analisando todas as partidas de hoje..."):
     for jogo in jogos_hoje:
-        resultado = analisar_jogo(jogo, limite)
+        resultado = analisar_jogo_completo(jogo)
         if resultado:
             resultados.append(resultado)
 
 if resultados:
     df_resultados = pd.DataFrame(resultados)
     st.dataframe(df_resultados, use_container_width=True)
-    st.success(f"{len(resultados)} jogos com confiança >= {limite}% encontrados.")
+    st.success(f"{len(resultados)} jogos analisados com sucesso.")
 else:
-    st.warning(f"Nenhum jogo com confiança >= {limite}% encontrado hoje.")
+    st.warning("Nenhuma estatística disponível para os jogos de hoje.")
 
 st.caption("Desenvolvido com dados da API-Football. Use as informações com responsabilidade.")
