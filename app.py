@@ -34,6 +34,12 @@ def buscar_estatisticas_time(team_id, league_id=71, season=2023):
         return response.json()['response']
     return None
 
+def extrair_media(valor):
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return 1.0
+
 st.set_page_config(page_title="Análise de Partidas", layout="wide")
 st.title("⚽ Análise Automática de Jogo com API")
 
@@ -52,10 +58,10 @@ if buscar and time_casa_nome and time_fora_nome:
         stats_fora = buscar_estatisticas_time(id_fora)
 
         if stats_casa and stats_fora:
-            gols_casa = float(stats_casa['goals']['for']['average']['total'] or 1.0)
-            sofre_casa = float(stats_casa['goals']['against']['average']['total'] or 1.0)
-            gols_fora = float(stats_fora['goals']['for']['average']['total'] or 1.0)
-            sofre_fora = float(stats_fora['goals']['against']['average']['total'] or 1.0)
+            gols_casa = extrair_media(stats_casa['goals']['for']['average']['total'])
+            sofre_casa = extrair_media(stats_casa['goals']['against']['average']['total'])
+            gols_fora = extrair_media(stats_fora['goals']['for']['average']['total'])
+            sofre_fora = extrair_media(stats_fora['goals']['against']['average']['total'])
 
             jogos_casa = stats_casa['fixtures']['played']['total'] or 1
             jogos_fora = stats_fora['fixtures']['played']['total'] or 1
