@@ -26,6 +26,20 @@ ligas_disponiveis = {
     "Liga Profesional Argentina": 128
 }
 
+def buscar_estatisticas_time(team_id, league_id, season):
+    response = requests.get(
+        f"{BASE_URL}/teams/statistics",
+        headers=HEADERS,
+        params={"team": team_id, "league": league_id, "season": season}
+    )
+    if response.status_code == 200:
+        return response.json()['response']
+    return {
+        'goals': {'for': {'average': {'total': 0}}, 'against': {'average': {'total': 0}}},
+        'fixtures': {'played': {'total': 1}, 'wins': {'total': 0}, 'draws': {'total': 0}},
+        'form': ""
+    }
+
 def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
     media_gols_casa = float(stats_casa['goals']['for']['average']['total'] or 0)
     media_gols_fora = float(stats_fora['goals']['for']['average']['total'] or 0)
@@ -58,9 +72,9 @@ def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
 
     return min(round(score, 1), 100), palpite
 
-# A função avaliar_partida_melhor_do_mundo será integrada no loop que mostra os jogos:
-# Após st.altair_chart(chart, use_container_width=True), insira:
-        stats_casa = buscar_estatisticas_time(jogo['teams']['home']['id'], jogo['league']['id'], jogo['league']['season'])
-        stats_fora = buscar_estatisticas_time(jogo['teams']['away']['id'], jogo['league']['id'], jogo['league']['season'])
-        score_melhor, palpite = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
-        st.success(f"🏅 Score Melhor do Mundo: {score_melhor}/100 | Palpite: {palpite}")
+# Exemplo de uso correto dentro de um loop:
+# for jogo in jogos_hoje:
+#     stats_casa = buscar_estatisticas_time(jogo['teams']['home']['id'], jogo['league']['id'], jogo['league']['season'])
+#     stats_fora = buscar_estatisticas_time(jogo['teams']['away']['id'], jogo['league']['id'], jogo['league']['season'])
+#     score, palpite = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
+#     st.write(f"Score: {score}, Palpite: {palpite}")
