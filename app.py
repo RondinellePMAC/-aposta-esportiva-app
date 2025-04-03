@@ -24,13 +24,16 @@ def buscar_estatisticas_time(team_id, league_id, season):
     )
     if response.status_code == 200:
         return response.json()['response']
-    return None
+    return {
+        'goals': {'for': {'average': {'total': 0}}, 'against': {'average': {'total': 0}}},
+        'fixtures': {'played': {'total': 1}, 'wins': {'total': 0}, 'draws': {'total': 0}}
+    }
 
 def extrair_media(valor):
     try:
         return float(valor)
     except (TypeError, ValueError):
-        return 1.0
+        return 0.0
 
 def analisar_jogo_completo(jogo):
     time_casa = jogo['teams']['home']
@@ -42,9 +45,6 @@ def analisar_jogo_completo(jogo):
 
     stats_casa = buscar_estatisticas_time(id_casa, league_id, season)
     stats_fora = buscar_estatisticas_time(id_fora, league_id, season)
-
-    if not stats_casa or not stats_fora:
-        return None
 
     gols_casa = extrair_media(stats_casa['goals']['for']['average']['total'])
     gols_fora = extrair_media(stats_fora['goals']['for']['average']['total'])
@@ -80,6 +80,12 @@ def analisar_jogo_completo(jogo):
         "Confiabilidade": f"{confianca}%"
     }
 
+def gerar_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name="Jogos")
+    return output.getvalue()
+
 st.set_page_config(page_title="Probabilidades Diárias de Jogos", layout="wide")
 st.title("📊 Probabilidades de Todos os Jogos de Hoje")
 
@@ -96,7 +102,16 @@ if resultados:
     df_resultados = pd.DataFrame(resultados)
     st.dataframe(df_resultados, use_container_width=True)
     st.success(f"{len(resultados)} jogos analisados com sucesso.")
+
+    st.markdown("### 📥 Exportar para Excel")
+    excel_data = gerar_excel(df_resultados)
+    st.download_button(
+        label="📥 Baixar Análise de Jogos",
+        data=excel_data,
+        file_name="analise_jogos_hoje.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 else:
-    st.warning("Nenhuma estatística disponível para os jogos de hoje.")
+    st.warning("Nenhum jogo com estatísticas encontradas. Alguns dados podem estar indisponíveis para hoje.")
 
 st.caption("Desenvolvido com dados da API-Football. Use as informações com responsabilidade.")
