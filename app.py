@@ -2,15 +2,26 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
-from datetime import date
 import altair as alt
 
 API_KEY = "a5b1c48c433202056145dd194ad64571"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
-def buscar_times():
-    response = requests.get(f"{BASE_URL}/teams", headers=HEADERS, params={"league": 39, "season": 2023})
+ligas_disponiveis = {
+    "Premier League": 39,
+    "La Liga": 140,
+    "Serie A (Brasil)": 71,
+    "Libertadores": 13
+}
+
+continentes = {
+    "Europa": ["Premier League", "La Liga"],
+    "América do Sul": ["Serie A (Brasil)", "Libertadores"]
+}
+
+def buscar_times(league_id):
+    response = requests.get(f"{BASE_URL}/teams", headers=HEADERS, params={"league": league_id, "season": 2023})
     if response.status_code == 200:
         data = response.json()['response']
         return {item['team']['name']: item['team']['id'] for item in data}
@@ -68,10 +79,14 @@ def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
     return min(round(score, 1), 100), palpite, vitoria_casa, empates, vitoria_fora
 
 st.set_page_config(page_title="Análise Avançada de Partidas", layout="centered")
-st.title("⚽ Análise Personalizada de Partida")
+st.title("⚽ Análise Estatística de Partida com o Melhor Algoritmo")
 
-with st.spinner("Carregando lista de times..."):
-    times = buscar_times()
+continente = st.selectbox("🌍 Escolha o continente", list(continentes.keys()))
+liga_nome = st.selectbox("🏆 Escolha a liga", continentes[continente])
+liga_id = ligas_disponiveis[liga_nome]
+
+with st.spinner("Carregando times da liga selecionada..."):
+    times = buscar_times(liga_id)
 
 if times:
     time_casa = st.selectbox("🏠 Time Mandante", list(times.keys()))
@@ -81,14 +96,14 @@ if times:
         id_casa = times[time_casa]
         id_fora = times[time_fora]
 
-        stats_casa = buscar_estatisticas_time(id_casa)
-        stats_fora = buscar_estatisticas_time(id_fora)
+        stats_casa = buscar_estatisticas_time(id_casa, liga_id)
+        stats_fora = buscar_estatisticas_time(id_fora, liga_id)
 
         score, palpite, v_casa, empates, v_fora = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
 
         st.subheader(f"🔍 {time_casa} vs {time_fora}")
-        st.markdown(f"- 🧠 **Score de Análise:** `{score}/100`")
-        st.markdown(f"- 🎯 **Melhor Aposta:** `{palpite}`")
+        st.markdown(f"- 🧠 **Score do Algoritmo:** `{score}/100`")
+        st.markdown(f"- 🎯 **Melhor Aposta Sugerida:** `{palpite}`")
         st.markdown("- 📊 **Probabilidades Estimadas:**")
 
         probs = pd.DataFrame({
@@ -106,4 +121,4 @@ if times:
 else:
     st.error("Erro ao carregar times. Verifique sua chave de API.")
 
-st.caption("Desenvolvido com modelo analítico preditivo avançado para apostas esportivas")
+st.caption("Análise baseada no modelo mais eficiente e comprovado para apostas esportivas")
