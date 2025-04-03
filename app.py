@@ -2,95 +2,131 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import requests
+
+API_KEY = "a5b1c48c433202056145dd194ad64571"
+BASE_URL = "https://v3.football.api-sports.io"
+HEADERS = {"x-apisports-key": API_KEY}
+
+def buscar_time_por_nome(nome_time):
+    response = requests.get(
+        f"{BASE_URL}/teams",
+        headers=HEADERS,
+        params={"search": nome_time}
+    )
+    if response.status_code == 200:
+        data = response.json()
+        if data['results'] > 0:
+            return data['response'][0]['team']['id']
+    return None
+
+def buscar_estatisticas_time(team_id, league_id=71, season=2023):
+    response = requests.get(
+        f"{BASE_URL}/teams/statistics",
+        headers=HEADERS,
+        params={
+            "team": team_id,
+            "league": league_id,
+            "season": season
+        }
+    )
+    if response.status_code == 200:
+        return response.json()['response']
+    return None
 
 st.set_page_config(page_title="Análise de Partidas", layout="wide")
-st.title("⚽ Análise Rápida de Jogo com Visual")
+st.title("⚽ Análise Automática de Jogo com API")
 
-st.markdown("Digite os nomes dos times e forneça os dados estimados para gerar a análise preditiva.")
+with st.form("form_api"):
+    st.markdown("### 🔍 Buscar Estatísticas dos Times")
+    time_casa_nome = st.text_input("Nome do Time Mandante")
+    time_fora_nome = st.text_input("Nome do Time Visitante")
+    buscar = st.form_submit_button("Buscar Estatísticas e Analisar")
 
-with st.form("form_analise"):
-    col1, col2 = st.columns(2)
-    with col1:
-        time_casa = st.text_input("🏠 Nome do Time Mandante", value="Time A")
-        gols_casa = st.number_input("Média de Gols do Mandante", value=1.0, step=0.1)
-        sofre_casa = st.number_input("Média de Gols Sofridos pelo Mandante", value=1.0, step=0.1)
-        vitorias_casa = st.number_input("Probabilidade de Vitória Mandante (%)", value=30.0, step=1.0)
-    with col2:
-        time_fora = st.text_input("🚌 Nome do Time Visitante", value="Time B")
-        gols_fora = st.number_input("Média de Gols do Visitante", value=1.0, step=0.1)
-        sofre_fora = st.number_input("Média de Gols Sofridos pelo Visitante", value=1.0, step=0.1)
-        vitorias_fora = st.number_input("Probabilidade de Vitória Visitante (%)", value=40.0, step=1.0)
+if buscar and time_casa_nome and time_fora_nome:
+    id_casa = buscar_time_por_nome(time_casa_nome)
+    id_fora = buscar_time_por_nome(time_fora_nome)
 
-    empates = st.slider("Probabilidade de Empate (%)", 0.0, 100.0, 30.0, step=1.0)
-    odds = st.number_input("Odd Média para o Palpite", value=1.90, step=0.05)
-    enviar = st.form_submit_button("🔍 Analisar Jogo")
+    if id_casa and id_fora:
+        stats_casa = buscar_estatisticas_time(id_casa)
+        stats_fora = buscar_estatisticas_time(id_fora)
 
-if enviar:
-    jogo_nome = f"{time_casa} vs {time_fora}"
-    media_gols = gols_casa + gols_fora
-    ambas_marcam = gols_casa > 0.9 and gols_fora > 0.9
-    mais_25 = media_gols > 2.5
+        if stats_casa and stats_fora:
+            gols_casa = stats_casa['goals']['for']['average']['total'] or 1.0
+            sofre_casa = stats_casa['goals']['against']['average']['total'] or 1.0
+            gols_fora = stats_fora['goals']['for']['average']['total'] or 1.0
+            sofre_fora = stats_fora['goals']['against']['average']['total'] or 1.0
+            vitorias_casa = stats_casa['fixtures']['wins']['total'] / stats_casa['fixtures']['played']['total'] * 100
+            empates = stats_casa['fixtures']['draws']['total'] / stats_casa['fixtures']['played']['total'] * 100
+            vitorias_fora = stats_fora['fixtures']['wins']['total'] / stats_fora['fixtures']['played']['total'] * 100
+            odds = 1.90
 
-    total = vitorias_casa + empates + vitorias_fora
-    prob_casa = round(vitorias_casa / total * 100, 1)
-    prob_empate = round(empates / total * 100, 1)
-    prob_fora = round(vitorias_fora / total * 100, 1)
+            media_gols = gols_casa + gols_fora
+            ambas_marcam = gols_casa > 0.9 and gols_fora > 0.9
+            mais_25 = media_gols > 2.5
 
-    if prob_fora > 50:
-        melhor = "Vitória Visitante"
-    elif prob_casa > 50:
-        melhor = "Vitória Mandante"
-    elif mais_25:
-        melhor = "+2.5 Gols"
-    elif ambas_marcam:
-        melhor = "Ambas Marcam"
+            prob_casa = round(vitorias_casa, 1)
+            prob_empate = round(empates, 1)
+            prob_fora = round(vitorias_fora, 1)
+
+            if prob_fora > 50:
+                melhor = "Vitória Visitante"
+            elif prob_casa > 50:
+                melhor = "Vitória Mandante"
+            elif mais_25:
+                melhor = "+2.5 Gols"
+            elif ambas_marcam:
+                melhor = "Ambas Marcam"
+            else:
+                melhor = "Dupla Chance (Empate ou Visitante)"
+
+            df = pd.DataFrame([{
+                "Jogo": f"{time_casa_nome} vs {time_fora_nome}",
+                "Média de Gols": round(media_gols, 2),
+                "+2.5 Gols": "Sim" if mais_25 else "Não",
+                "Ambas Marcam": "Sim" if ambas_marcam else "Não",
+                "Vitória Mandante (%)": prob_casa,
+                "Empate (%)": prob_empate,
+                "Vitória Visitante (%)": prob_fora,
+                "Melhor Aposta": melhor,
+                "Odd Simulada": odds
+            }])
+
+            st.markdown("### 📊 Resultado da Análise")
+            st.dataframe(df, use_container_width=True)
+
+            st.markdown("### 📁 Exportar Palpite")
+            def to_excel(df):
+                output = BytesIO()
+                writer = pd.ExcelWriter(output, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Palpite')
+                writer.save()
+                return output.getvalue()
+
+            excel_data = to_excel(df)
+            st.download_button(
+                label="📥 Baixar Palpite (Excel)",
+                data=excel_data,
+                file_name="palpite_jogo.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.success(f"🎯 Melhor aposta sugerida: {melhor}")
+
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("🔵 Gols Marcados (Mandante)", f"{gols_casa:.2f}")
+                st.metric("🔴 Gols Sofridos (Mandante)", f"{sofre_casa:.2f}")
+                st.metric("✅ Vitória Mandante (%)", f"{prob_casa:.1f}%")
+            with col2:
+                st.metric("🔵 Gols Marcados (Visitante)", f"{gols_fora:.2f}")
+                st.metric("🔴 Gols Sofridos (Visitante)", f"{sofre_fora:.2f}")
+                st.metric("✅ Vitória Visitante (%)", f"{prob_fora:.1f}%")
+        else:
+            st.error("Erro ao obter estatísticas dos times.")
     else:
-        melhor = "Dupla Chance (Empate ou Visitante)"
-
-    df = pd.DataFrame([{
-        "Jogo": jogo_nome,
-        "Média de Gols": round(media_gols, 2),
-        "+2.5 Gols": "Sim" if mais_25 else "Não",
-        "Ambas Marcam": "Sim" if ambas_marcam else "Não",
-        "Vitória Mandante (%)": prob_casa,
-        "Empate (%)": prob_empate,
-        "Vitória Visitante (%)": prob_fora,
-        "Melhor Aposta": melhor,
-        "Odd Simulada": odds
-    }])
-
-    st.markdown("### 📊 Resultado da Análise")
-    st.dataframe(df, use_container_width=True)
-
-    st.markdown("### 📁 Exportar Palpite")
-    def to_excel(df):
-        output = BytesIO()
-        writer = pd.ExcelWriter(output, engine='xlsxwriter')
-        df.to_excel(writer, index=False, sheet_name='Palpite')
-        writer.save()
-        return output.getvalue()
-
-    excel_data = to_excel(df)
-    st.download_button(
-        label="📥 Baixar Palpite (Excel)",
-        data=excel_data,
-        file_name="palpite_jogo.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    st.success(f"🎯 Melhor aposta sugerida: {melhor}")
-
-    st.markdown("---")
-    st.markdown(f"### 📌 Visão Geral do Confronto: **{time_casa} vs {time_fora}**")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("🔵 Gols Marcados (Mandante)", f"{gols_casa:.2f}")
-        st.metric("🔴 Gols Sofridos (Mandante)", f"{sofre_casa:.2f}")
-        st.metric("✅ Vitória Mandante (%)", f"{prob_casa:.1f}%")
-    with col2:
-        st.metric("🔵 Gols Marcados (Visitante)", f"{gols_fora:.2f}")
-        st.metric("🔴 Gols Sofridos (Visitante)", f"{sofre_fora:.2f}")
-        st.metric("✅ Vitória Visitante (%)", f"{prob_fora:.1f}%")
+        st.error("Time(s) não encontrados. Verifique os nomes e tente novamente.")
 
 st.markdown("---")
-st.caption("⚠️ Esta ferramenta é apenas uma estimativa baseada nos dados fornecidos. Aposte com responsabilidade.")
+st.caption("⚠️ Esta ferramenta é apenas uma estimativa baseada nos dados fornecidos pela API-Football. Aposte com responsabilidade.")
