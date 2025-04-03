@@ -8,16 +8,23 @@ API_KEY = "a5b1c48c433202056145dd194ad64571"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
-def listar_times(league_id=71, season=2023):
-    response = requests.get(
-        f"{BASE_URL}/teams",
-        headers=HEADERS,
-        params={"league": league_id, "season": season}
-    )
-    if response.status_code == 200:
+def listar_todos_times():
+    times = []
+    page = 1
+    while True:
+        response = requests.get(
+            f"{BASE_URL}/teams",
+            headers=HEADERS,
+            params={"page": page}
+        )
+        if response.status_code != 200:
+            break
         data = response.json()
-        return [team['team']['name'] for team in data['response']]
-    return []
+        times += [team['team']['name'] for team in data['response']]
+        if page >= data['paging']['total']:
+            break
+        page += 1
+    return sorted(set(times))
 
 def buscar_time_por_nome(nome_time):
     response = requests.get(
@@ -50,7 +57,8 @@ def extrair_media(valor):
 st.set_page_config(page_title="Análise de Partidas", layout="wide")
 st.title("⚽ Análise Automática de Jogo com API")
 
-lista_times = listar_times()
+st.markdown("Aguarde o carregamento de todos os times... (pode levar alguns segundos)")
+lista_times = listar_todos_times()
 
 with st.form("form_api"):
     st.markdown("### 🔍 Selecione os Times para Análise")
