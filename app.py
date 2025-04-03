@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from io import BytesIO
 import requests
 from datetime import date
 import altair as alt
@@ -10,23 +9,14 @@ API_KEY = "a5b1c48c433202056145dd194ad64571"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
-continentes = {
-    "Europa": ["UEFA Champions League", "Premier League", "La Liga", "Serie A", "Bundesliga"],
-    "América do Sul": ["Copa Libertadores", "Campeonato Brasileiro Série A", "Liga Profesional Argentina"]
-}
+def buscar_times():
+    response = requests.get(f"{BASE_URL}/teams", headers=HEADERS, params={"league": 39, "season": 2023})
+    if response.status_code == 200:
+        data = response.json()['response']
+        return {item['team']['name']: item['team']['id'] for item in data}
+    return {}
 
-ligas_disponiveis = {
-    "UEFA Champions League": 2,
-    "Premier League": 39,
-    "La Liga": 140,
-    "Serie A": 135,
-    "Bundesliga": 78,
-    "Copa Libertadores": 13,
-    "Campeonato Brasileiro Série A": 71,
-    "Liga Profesional Argentina": 128
-}
-
-def buscar_estatisticas_time(team_id, league_id, season):
+def buscar_estatisticas_time(team_id, league_id=39, season=2023):
     response = requests.get(
         f"{BASE_URL}/teams/statistics",
         headers=HEADERS,
@@ -49,6 +39,7 @@ def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
 
     vitoria_casa = stats_casa['fixtures']['wins']['total'] / jogos_casa * 100
     vitoria_fora = stats_fora['fixtures']['wins']['total'] / jogos_fora * 100
+    empates = stats_casa['fixtures']['draws']['total'] / jogos_casa * 100
 
     forma_casa = stats_casa.get('form', '').count("W") * 10
     forma_fora = stats_fora.get('form', '').count("W") * 10
@@ -61,62 +52,58 @@ def avaliar_partida_melhor_do_mundo(stats_casa, stats_fora):
         forma_fora * 0.2
     )
 
-    if media_gols_casa + media_gols_fora >= 2.5:
+    if media_gols_casa + media_gols_fora >= 2.8:
         palpite = "+2.5 Gols"
+    elif media_gols_casa + media_gols_fora >= 1.5:
+        palpite = "+1.5 Gols"
     elif vitoria_fora > 60:
         palpite = "Vitória Visitante"
     elif vitoria_casa > 60:
         palpite = "Vitória Mandante"
+    elif media_gols_casa > 0.8 and media_gols_fora > 0.8:
+        palpite = "Ambas Marcam"
     else:
         palpite = "Dupla Chance"
 
-    return min(round(score, 1), 100), palpite
+    return min(round(score, 1), 100), palpite, vitoria_casa, empates, vitoria_fora
 
-def listar_jogos_hoje_por_liga(league_id):
-    hoje = date.today().strftime("%Y-%m-%d")
-    response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS, params={"date": hoje, "league": league_id})
-    if response.status_code == 200:
-        return response.json()['response']
-    return []
+st.set_page_config(page_title="Análise Avançada de Partidas", layout="centered")
+st.title("⚽ Análise Personalizada de Partida")
 
-st.set_page_config(page_title="Melhor do Mundo - Apostas", layout="wide")
-st.title("🔍 Análise de Partidas - Estilo Melhor do Mundo")
+with st.spinner("Carregando lista de times..."):
+    times = buscar_times()
 
-continente = st.selectbox("🌎 Selecione o continente", list(continentes.keys()))
-liga_nome = st.selectbox("🏆 Escolha a liga", continentes[continente])
-liga_id = ligas_disponiveis[liga_nome]
+if times:
+    time_casa = st.selectbox("🏠 Time Mandante", list(times.keys()))
+    time_fora = st.selectbox("🚩 Time Visitante", list(times.keys()))
 
-jogos_hoje = listar_jogos_hoje_por_liga(liga_id)
+    if time_casa and time_fora and time_casa != time_fora:
+        id_casa = times[time_casa]
+        id_fora = times[time_fora]
 
-if not jogos_hoje:
-    st.warning("Nenhum jogo encontrado para hoje nesta liga.")
-else:
-    for jogo in jogos_hoje:
-        time_casa = jogo['teams']['home']['name']
-        time_fora = jogo['teams']['away']['name']
-        st.markdown(f"### ⚽ {time_casa} vs {time_fora}")
+        stats_casa = buscar_estatisticas_time(id_casa)
+        stats_fora = buscar_estatisticas_time(id_fora)
 
-        stats_casa = buscar_estatisticas_time(jogo['teams']['home']['id'], jogo['league']['id'], jogo['league']['season'])
-        stats_fora = buscar_estatisticas_time(jogo['teams']['away']['id'], jogo['league']['id'], jogo['league']['season'])
+        score, palpite, v_casa, empates, v_fora = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
 
-        score, palpite = avaliar_partida_melhor_do_mundo(stats_casa, stats_fora)
+        st.subheader(f"🔍 {time_casa} vs {time_fora}")
+        st.markdown(f"- 🧠 **Score de Análise:** `{score}/100`")
+        st.markdown(f"- 🎯 **Melhor Aposta:** `{palpite}`")
+        st.markdown("- 📊 **Probabilidades Estimadas:**")
 
-        st.info(f"🏅 Score: {score}/100")
-        st.success(f"🎯 Palpite sugerido: {palpite}")
-
-        chart_data = pd.DataFrame({
-            "Equipe": ["Mandante", "Visitante"],
-            "Confiança": [score if palpite == "Vitória Mandante" else score / 2,
-                          score if palpite == "Vitória Visitante" else score / 2]
+        probs = pd.DataFrame({
+            "Resultado": ["Vitória Mandante", "Empate", "Vitória Visitante"],
+            "Probabilidade (%)": [v_casa, empates, v_fora]
         })
 
-        chart = alt.Chart(chart_data).mark_bar().encode(
-            x="Equipe",
-            y="Confiança",
-            color="Equipe"
-        ).properties(height=200)
+        chart = alt.Chart(probs).mark_bar().encode(
+            x="Resultado",
+            y="Probabilidade (%)",
+            color="Resultado"
+        ).properties(height=300)
 
         st.altair_chart(chart, use_container_width=True)
-        st.divider()
+else:
+    st.error("Erro ao carregar times. Verifique sua chave de API.")
 
-st.caption("Desenvolvido com inteligência para análise preditiva de apostas esportivas")
+st.caption("Desenvolvido com modelo analítico preditivo avançado para apostas esportivas")
