@@ -8,6 +8,17 @@ API_KEY = "a5b1c48c433202056145dd194ad64571"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
+def listar_times(league_id=71, season=2023):
+    response = requests.get(
+        f"{BASE_URL}/teams",
+        headers=HEADERS,
+        params={"league": league_id, "season": season}
+    )
+    if response.status_code == 200:
+        data = response.json()
+        return [team['team']['name'] for team in data['response']]
+    return []
+
 def buscar_time_por_nome(nome_time):
     response = requests.get(
         f"{BASE_URL}/teams",
@@ -24,11 +35,7 @@ def buscar_estatisticas_time(team_id, league_id=71, season=2023):
     response = requests.get(
         f"{BASE_URL}/teams/statistics",
         headers=HEADERS,
-        params={
-            "team": team_id,
-            "league": league_id,
-            "season": season
-        }
+        params={"team": team_id, "league": league_id, "season": season}
     )
     if response.status_code == 200:
         return response.json()['response']
@@ -43,10 +50,12 @@ def extrair_media(valor):
 st.set_page_config(page_title="Análise de Partidas", layout="wide")
 st.title("⚽ Análise Automática de Jogo com API")
 
+lista_times = listar_times()
+
 with st.form("form_api"):
-    st.markdown("### 🔍 Buscar Estatísticas dos Times")
-    time_casa_nome = st.text_input("Nome do Time Mandante")
-    time_fora_nome = st.text_input("Nome do Time Visitante")
+    st.markdown("### 🔍 Selecione os Times para Análise")
+    time_casa_nome = st.selectbox("🏠 Time Mandante", options=lista_times)
+    time_fora_nome = st.selectbox("🚌 Time Visitante", options=lista_times)
     buscar = st.form_submit_button("Buscar Estatísticas e Analisar")
 
 if buscar and time_casa_nome and time_fora_nome:
@@ -108,9 +117,8 @@ if buscar and time_casa_nome and time_fora_nome:
             st.markdown("### 📁 Exportar Palpite")
             def to_excel(df):
                 output = BytesIO()
-                writer = pd.ExcelWriter(output, engine='xlsxwriter')
-                df.to_excel(writer, index=False, sheet_name='Palpite')
-                writer.save()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Palpite')
                 return output.getvalue()
 
             excel_data = to_excel(df)
